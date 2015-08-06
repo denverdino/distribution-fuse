@@ -98,7 +98,10 @@ func (d *driver) PutContent(ctx context.Context, subPath string, contents []byte
 		return err
 	}
 
-	return os.Truncate(d.fullPath(subPath), int64(len(contents)))
+	// Fuse support: Disable truncate
+	//return os.Truncate(d.fullPath(subPath), int64(len(contents)))
+	// End
+	return nil
 }
 
 // ReadStream retrieves an io.ReadCloser for the content stored at "path" with a
@@ -112,8 +115,11 @@ func (d *driver) ReadStream(ctx context.Context, path string, offset int64) (io.
 
 		return nil, err
 	}
-
+	if offset == 0 {
+		return file, nil
+	}
 	seekPos, err := file.Seek(int64(offset), os.SEEK_SET)
+	//fmt.Printf("File Seek: %d, %v\n", seekPos, err)
 	if err != nil {
 		file.Close()
 		return nil, err
@@ -139,6 +145,12 @@ func (d *driver) WriteStream(ctx context.Context, subPath string, offset int64, 
 		return 0, err
 	}
 
+	// Fuse support
+	if offset == 0 {
+		os.Remove(fullPath)
+	}
+	// End
+
 	fp, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		// TODO(stevvooe): A few missing conditions in storage driver:
@@ -148,16 +160,16 @@ func (d *driver) WriteStream(ctx context.Context, subPath string, offset int64, 
 		return 0, err
 	}
 	defer fp.Close()
+	/*
+		nn, err = fp.Seek(offset, os.SEEK_SET)
+		if err != nil {
+			return 0, err
+		}
 
-	nn, err = fp.Seek(offset, os.SEEK_SET)
-	if err != nil {
-		return 0, err
-	}
-
-	if nn != offset {
-		return 0, fmt.Errorf("bad seek to %v, expected %v in fp=%v", offset, nn, fp)
-	}
-
+		if nn != offset {
+			return 0, fmt.Errorf("bad seek to %v, expected %v in fp=%v", offset, nn, fp)
+		}
+	*/
 	return io.Copy(fp, reader)
 }
 
